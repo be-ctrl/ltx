@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LaTeX محرر ومعالج</title>
+    
+    <!-- KaTeX CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+    <!-- KaTeX JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+    
+    <!-- PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Noto Naskh Arabic', Arial, sans-serif;
+        }
+        .latex-content {
+            direction: rtl;
+            text-align: right;
+            line-height: 1.8;
+        }
+        .preview-area {
+            min-height: 500px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .math-display {
+            direction: ltr !important;
+            text-align: center;
+            margin: 1rem 0;
+            overflow-x: auto;
+            padding: 1rem 0;
+        }
+        .error {
+            color: red;
+            margin-top: 8px;
+            display: none;
+        }
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin: 2rem 0 1rem;
+            color: #2c3e50;
+        }
+        .subsection-title {
+            font-size: 1.4rem;
+            font-weight: bold;
+            margin: 1.5rem 0 1rem;
+            color: #34495e;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Input Section -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h2 class="text-xl font-semibold mb-4">النص المدخل</h2>
+                <textarea 
+                    id="input-area"
+                    class="w-full h-96 p-4 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    dir="ltr"
+                    placeholder="أدخل نص LaTeX هنا..."
+                ></textarea>
+                <div id="error-message" class="error"></div>
+            </div>
+
+            <!-- Preview Section -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h2 class="text-xl font-semibold mb-4">المعاينة</h2>
+                <div id="preview-area" class="preview-area latex-content"></div>
+            </div>
+        </div>
+
+        <div class="flex justify-center gap-4 mt-8">
+            <button onclick="processLatex()" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors">
+                معالجة النص
+            </button>
+            <button onclick="exportToPDF()" class="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition-colors">
+                PDF تصدير كملف
+            </button>
+            <button onclick="clearContent()" class="bg-red-600 text-white px-8 py-3 rounded-lg hover:bg-red-700 transition-colors">
+                مسح المحتوى
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const inputArea = document.getElementById('input-area');
+        const previewArea = document.getElementById('preview-area');
+        const errorMessage = document.getElementById('error-message');
+
+        function processLatex() {
+            try {
+                let content = inputArea.value;
+                let processedContent = '';
+                
+                // تقسيم النص إلى أسطر
+                const lines = content.split('\n');
+                let inMathMode = false;
+                let mathContent = '';
+                
+                for (let line of lines) {
+                    // تجاهل أوامر المستند
+                    if (line.includes('\\documentclass') || 
+                        line.includes('\\usepackage') || 
+                        line.includes('\\begin{document}') || 
+                        line.includes('\\end{document}')) {
+                        continue;
+                    }
+
+                    // معالجة العنوان الرئيسي
+                    if (line.includes('\\title{')) {
+                        const title = line.match(/\\title\{([^}]+)\}/)[1];
+                        processedContent += `<h1 class="text-4xl font-bold text-center my-6">${title}</h1>`;
+                        continue;
+                    }
+
+                    // معالجة المؤلف
+                    if (line.includes('\\author{')) {
+                        const author = line.match(/\\author\{([^}]+)\}/)[1];
+                        processedContent += `<p class="text-xl text-center text-gray-600 mb-6">${author}</p>`;
+                        continue;
+                    }
+
+                    // معالجة العناوين الفرعية
+                    if (line.includes('\\section{')) {
+                        const section = line.match(/\\section\{([^}]+)\}/)[1];
+                        processedContent += `<h2 class="section-title">${section}</h2>`;
+                        continue;
+                    }
+
+                    // معالجة المعادلات
+                    if (line.includes('\\begin{equation}')) {
+                        inMathMode = true;
+                        continue;
+                    }
+                    if (line.includes('\\end{equation}')) {
+                        try {
+                            const renderedMath = katex.renderToString(mathContent.trim(), {
+                                displayMode: true,
+                                throwOnError: false
+                            });
+                            processedContent += `<div class="math-display">${renderedMath}</div>`;
+                            mathContent = '';
+                            inMathMode = false;
+                        } catch (e) {
+                            console.error('KaTeX error:', e);
+                        }
+                        continue;
+                    }
+                    if (inMathMode) {
+                        mathContent += line + ' ';
+                        continue;
+                    }
+
+                    // معالجة المعادلات المضمنة
+                    if (line.includes('\\[') && line.includes('\\]')) {
+                        const mathMatch = line.match(/\\\[(.*?)\\\]/);
+                        if (mathMatch) {
+                            try {
+                                const renderedMath = katex.renderToString(mathMatch[1].trim(), {
+                                    displayMode: true,
+                                    throwOnError: false
+                                });
+                                line = line.replace(/\\\[.*?\\\]/, `<div class="math-display">${renderedMath}</div>`);
+                            } catch (e) {
+                                console.error('KaTeX error:', e);
+                            }
+                        }
+                    }
+
+                    // إضافة النص العادي
+                    if (line.trim() !== '') {
+                        processedContent += `<p class="mb-4">${line}</p>`;
+                    }
+                }
+
+                previewArea.innerHTML = processedContent;
+                errorMessage.style.display = 'none';
+            } catch (error) {
+                errorMessage.textContent = 'حدث خطأ: ' + error.message;
+                errorMessage.style.display = 'block';
+            }
+        }
+
+        async function exportToPDF() {
+            const element = previewArea;
+            const opt = {
+                margin: 1,
+                filename: 'document.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 },
+                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+            };
+
+            try {
+                await html2pdf().set(opt).from(element).save();
+            } catch (error) {
+                errorMessage.textContent = 'خطأ في تصدير PDF: ' + error.message;
+                errorMessage.style.display = 'block';
+            }
+        }
+
+        function clearContent() {
+            inputArea.value = '';
+            previewArea.innerHTML = '';
+        }
+
+        // معالجة تلقائية عند الكتابة
+        let debounceTimer;
+        inputArea.addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(processLatex, 300);
+        });
+
+        // مثال افتراضي
+        inputArea.value = `\\documentclass{article}
+\\usepackage{amsmath}
+\\usepackage{arabic}
+\\begin{document}
+
+\\title{مقدمة في النظرية النسبية الخاصة}
+\\author{د. أحمد محمد}
+
+\\section{المقدمة}
+تعد النظرية النسبية الخاصة من أهم النظريات في الفيزياء الحديثة.
+
+\\begin{equation}
+E = mc^2
+\\end{equation}
+
+\\section{المعادلات الأساسية}
+معامل غاما في تحويلات لورنتز:
+\\[\\gamma = \\frac{1}{\\sqrt{1-\\frac{v^2}{c^2}}}\\]
+
+\\end{document}`;
+
+        // معالجة أولية
+        processLatex();
+    </script>
+</body>
+</html>
